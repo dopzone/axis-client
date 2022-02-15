@@ -3,18 +3,15 @@ import Avatar from '@material-ui/core/Avatar';
 import Button from '@material-ui/core/Button';
 import CssBaseline from '@material-ui/core/CssBaseline';
 import TextField from '@material-ui/core/TextField';
-import FormControlLabel from '@material-ui/core/FormControlLabel';
-import Checkbox from '@material-ui/core/Checkbox';
 import Link from '@material-ui/core/Link';
 import Box from '@material-ui/core/Box';
-import InputAdornment from '@material-ui/core/InputAdornment';
 import Typography from '@material-ui/core/Typography';
 import { makeStyles} from '@material-ui/core/styles';
 import Container from '@material-ui/core/Container';
-import { Select, MenuItem } from '@material-ui/core';
+import { Select, MenuItem, FormControl, RadioGroup, FormControlLabel, Radio, InputAdornment } from '@material-ui/core';
 
 const axios = require('axios');
-const qs = require('querystring');
+const BASE_URL = 'https://damp-eyrie-80368.herokuapp.com';
 
 function getIds() {
   
@@ -80,115 +77,90 @@ function App() {
   const [otp, setOtp] = React.useState('');
   const [msisdn, setMsisdn] = React.useState('');
   const [pkgid, setPkgid] = React.useState('');
+  const [token, setToken] = React.useState('')
+
 
   const [loading, setLoading] = React.useState(false);
   const [response, setResponse] = React.useState('');
   const [open, setOpen] = React.useState(false);
   const [auto, setAuto] = React.useState(true);
-
-
-  const handleOtp = (e) => {
-    setOtp(e.target.value);
-  };
-   
-  const handleAuto = () => {
-    setAuto(!auto);
-  }
-  const handleMsisdn = (e) => {
-    setMsisdn(e.target.value);
-  };
-  const handlePkgid = (e) => {
-    setPkgid(e.target.value)
-  }
+  const [method, setMethod] = React.useState('buy')
+  
+  
   //Request OTP
-  const submitOtp = () => {
-    const url = 'https://axisnets.herokuapp.com/newaxisnet/sso/signinv3/otp_request';
-    const requestBody = {
-      msisdn:msisdn
-    } 
-    const config = {
+  async function fetchData (url, requestBody, callBack )  {
+
+    const headers = {
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
+        'Content-Type': 'application/json'
       }
     }
-    setLoading(true);
-    axios.post(url, qs.stringify(requestBody), config)
-      .then((result) => {
-        const {data} = result;
-        if(data.code === '200') {
-          setLoading(false);
-          setOpen(true);
-          setResponse(data.message);
-        }
-        else {
-          setLoading(false);
-          setResponse(data.message);
-        }
-      })
-      .catch((err) => {
-       // openInputOtp(false);
-        alert (`Jaringan Error ${err}`);
+    try {
+      setLoading(true)
+      const { data } = await axios.post(url, requestBody, headers)
+      if(data.status_code === 200) {
         setLoading(false);
-      })
+        setOpen(true);
+        callBack(data,true)
+
+      }
+      else {
+        setLoading(false);
+        callBack(data, false)
+      }
+
+    } catch (err) {
+      alert (`Jaringan Error ${err} Atau terjadi Kesalahan`);
+      setResponse('')
+      setLoading(false);
+    }
+
   };
 
-  // Request Buy Package
-  const submitPackage =(e)=> {
-    e.preventDefault();
-    //Login Api
-    const url = 'https://axisnets.herokuapp.com/newaxisnet/sso/signinv3/auth';
-    const requestBody = {
-      msisdn:msisdn,
-      otp_code:otp
-    } 
-    const config = {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
-    }
-    setLoading(true);
-    axios.post(url, qs.stringify(requestBody), config)
-      .then((result) => {
-        const {data} = result;
-        if(data.code === '200') {
-          const {msisdn, token} = data.data;
-          const body = {
-            msisdn,
-            token,
-            pkgid
-          }
-          //Buy
-          axios.post('https://axisnets.herokuapp.com/newaxisnet/oasys/package/buy', qs.stringify(body), config)
-            .then(response => {
-              setLoading(false);
+  const requestOtp = async (e) => {
+         e.preventDefault();
+      setResponse(`OTP Request ${msisdn} ...`)
+ 
+    
+      if(!msisdn) {
+        alert ('Input Tidak lengkap')
+        setResponse('')
 
-              let res = response.data;
-              if(res.status === '1') {
-                const {message} = res;
-                setResponse(message);
-              }
-              else {
-                const {err_code, err_desc} = res;
-                setResponse(JSON.stringify({err_code, err_desc}));
-              }
-              
-            })
-            .catch(err => {
-              setLoading(false);
-              setResponse(JSON.stringify(err));
-            })
-          
+      } else {
+        
+        await fetchData(`${BASE_URL}/otp`, {msisdn}, function(res, status) { setResponse(JSON.stringify(res))})
+      }
+  }
+  const loginOtp = async (e)=> {
+   
+    e.preventDefault();
+     
+        if(token) {
+          await buyPackage(token, pkgid)
+          return
         }
-        else {
-          setLoading(false);
-          setResponse(JSON.stringify(result.data));
+        if (!otp || !pkgid) {
+          setResponse('Request OTP Dulu')
+          return
         }
-      })
-      .catch((err) => {
-        setLoading(false);
-        alert (`Jaringan Error ${err}`);
-       
-      })
+        setResponse('Login Otp ..')
+        await fetchData(`${BASE_URL}/loginotp`, {msisdn, otp_code:otp }, async function(data, status) {
+          if(status) {
+              await buyPackage(data.token, pkgid)
+          }
+          else
+            { setResponse(JSON.stringify(data)); }
+        })
+      
+    
+    
+  }
+  const buyPackage = async (token, pkgid) => {
+    setResponse('Buy Package : ' + pkgid + " token : " + token)
+
+    await fetchData(`${BASE_URL}/package/${method}`,{token, pkgid}, function(res, status) {setResponse(JSON.stringify(res))})
+    setToken(token)
+
   }
   const renderGetOtp = () => {
 
@@ -199,18 +171,19 @@ function App() {
         required
         fullWidth
         placeholder="0838xxxxxxxxx"
-        onChange={handleMsisdn}
+        onChange={(e)=> setMsisdn(e.target.value)}
         value={msisdn}
         disabled={loading}
         label="No Telp"
         InputProps={{
           endAdornment: (
             <InputAdornment position='end'>
-              <Button onClick={submitOtp} variant="contained" color="primary" disabled={loading}>GET OTP</Button>
+              <Button onClick={(e)=>requestOtp(e)} variant="outlined"  size="small" color="secondary" disabled={loading}>GET OTP</Button>
             </InputAdornment>
               ),
             }}
-          />
+       
+        />
     )
     if (open) {
       rendered = (
@@ -221,7 +194,7 @@ function App() {
           fullWidth
           placeholder="XGHLJ"
           label="OTP KODE"
-          onChange={handleOtp}
+          onChange={(e)=> setOtp(e.target.value)}
           value={otp}
           name="otp"
          
@@ -232,6 +205,17 @@ function App() {
     return rendered;
 
   }
+  /*
+  curl --location --request POST 'https://young-beyond-38984.herokuapp.com/otp' --data-raw '{"msisdn":"083826712349"}'
+
+curl --location --request POST 'https://young-beyond-38984.herokuapp.com/loginotp' --data-raw '{"msisdn":"083826712349", "otp_code":"XHGKL"}'
+
+curl --location --request POST 'https://young-beyond-38984.herokuapp.com/package/buy' --data-raw '{"token":"nsbsds.asa-093434soii", "pkgid":"3212256"}'
+
+curl --location --request POST 'https://young-beyond-38984.herokuapp.com/package/claim' --data-raw '{"token":"nsbsds.asa-093434soii", "pkgid":"3212254"}'
+
+curl --location --request POST 'https://young-beyond-38984.herokuapp.com/package/card' --data-raw '{"token":"nsbsds.asa-093434soii", "pkgid":"32154454"}'
+   */
 
   return (
     <Container component="main" maxWidth="xs">
@@ -239,15 +223,16 @@ function App() {
       <div className={classes.paper}>
         <Avatar className={classes.avatar}>
           <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Axis_logo_2015.svg/82px-Axis_logo_2015.svg.png" alt=""/>
+
         </Avatar>
+
+        <h1>Axis beta v.1.0</h1>
        
-        <form className={classes.form} noValidate onSubmit={submitPackage}>
+        <form className={classes.form} noValidate onSubmit={async (e)=> loginOtp(e)}>
           {renderGetOtp()}
           
-          <FormControlLabel
-            control={<Checkbox disabled={loading} onChange={handleAuto} color="primary" checked={auto}/>}
-            label="Manual Input"
-          />
+          <Button size='small' variant='outlined' color='primary' onClick={()=>setAuto(!auto)}>{auto ?"Auto":"Manual"}</Button>
+        
           <br/>
           {auto ? 
           <TextField
@@ -258,7 +243,8 @@ function App() {
             name="pkgid"
             label="Pkgid"
             placeholder="3212255"
-            onChange={handlePkgid}
+            onChange={(e)=> setPkgid(e.target.value)}
+            
             value={pkgid}
             disabled={loading}
            
@@ -268,7 +254,7 @@ function App() {
             value={pkgid}
             fullWidth
             displayEmpty
-            onChange={handlePkgid}>
+            onChange={(e)=> setPkgid(e.target.value)}>
             <MenuItem value="">
             <em>Pilih Paket </em>
             
@@ -277,6 +263,20 @@ function App() {
             
           </Select>
           }
+           <FormControl>
+             <RadioGroup
+              value={method}
+              onChange={(e)=> setMethod(e.target.value)}
+        row
+        aria-labelledby="demo-row-radio-buttons-group-label"
+        name="row-radio-buttons-group"
+      >
+        <FormControlLabel value="buy" control={<Radio />} label="Buy" />
+        <FormControlLabel value="claim" control={<Radio />} label="Claim" />
+        <FormControlLabel value="card" control={<Radio />} label="Card" />
+        
+      </RadioGroup>
+    </FormControl>
           <Button
             type="submit"
             fullWidth
@@ -285,11 +285,11 @@ function App() {
             className={classes.submit}
             disabled={loading}
           >
-            BELI PAKET
+            BELI PAKET 
           </Button>
         
         </form>
-        <p>{loading?'Loading....':response}</p>
+        <p>{response}</p>
 
        
       </div>
